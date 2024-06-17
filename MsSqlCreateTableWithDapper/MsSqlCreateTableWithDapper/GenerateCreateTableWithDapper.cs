@@ -1,6 +1,8 @@
 ﻿using MsSqlCreateTableWithDapper.Attributes;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Reflection;
 using System.Text;
+using ForeignKeyAttribute = MsSqlCreateTableWithDapper.Attributes.ForeignKeyAttribute;
 
 namespace MsSqlCreateTableWithDapper
 {
@@ -98,6 +100,51 @@ namespace MsSqlCreateTableWithDapper
             createTableQuery.Append(")");
 
             return createTableQuery.ToString();
+        }
+
+        public string GenerateCreateForeignKey(Type model)
+        {
+            //alter table MyTable  add constraint MyTable_MyColumn_FK FOREIGN KEY(MyColumn) references MyOtherTable(PKColumn)
+
+            // stringbuildere create tablo +modelin name ini alıp ekledik (
+            StringBuilder createTableQuery = new StringBuilder();
+            PropertyInfo[] properties = model.GetProperties(); // bütün properyleri çekip arry a attık
+
+            var foreignKeyExist = false;
+
+            foreach (PropertyInfo property in properties) // modeldeki propery leri dönüyoruz
+            {
+                #region Ignore attributeyi ayıkladık
+                // bizim hazırladığımız custom attributeyi ismini vererek  değişkene atıyoruz. burada sadece DbIgnoreColumnAttribute kullanan propertyleri alıyoruz.
+                // bu bize yoksa null döner varsa belirtiğimiz attribute tipini geri döner
+                var dbIgnoreColumn = property.GetCustomAttribute(typeof(DbIgnoreColumnAttribute)) as DbIgnoreColumnAttribute;
+                // bu attribute sahip olan propery databasede oluşturulmaz.altta bu attribute olan property i continue ile es geçiyoruz.
+                if (dbIgnoreColumn is { DbIgnore: true }) continue;
+                #endregion
+
+
+                string columnName = property.Name; // foreachtan gelen her property nin ismini string olarak değişkene atıyoruz.
+
+
+                // Check if the property has a ForeignKey attribute for foreign key constraints
+                if (property.IsDefined(typeof(ForeignKeyAttribute)))
+                {
+                    if (property.GetCustomAttribute(typeof(ForeignKeyAttribute)) is ForeignKeyAttribute foreignKeyAttribute)
+                    {
+                        foreignKeyExist = true;
+                        createTableQuery.Append(@$"ALTER TABLE [{model.Name}] 
+                                                   Add CONSTRAINT [FK_{model.Name}_{columnName}_{foreignKeyAttribute.ReferenceTable}_{foreignKeyAttribute.ReferenceColumn}] 
+                                                   FOREIGN KEY ({columnName}) REFERENCES {foreignKeyAttribute.ReferenceTable} ({foreignKeyAttribute.ReferenceColumn});");
+
+                        //  constraint fk_name foreign key (cityId) references city (id)
+                    }
+
+                }
+
+
+            }
+
+            return foreignKeyExist ? createTableQuery.ToString() : "";
         }
 
 
